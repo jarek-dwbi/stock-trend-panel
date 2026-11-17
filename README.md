@@ -5,6 +5,8 @@ Consolidation, Machine Learning) that appears automatically on stock, forex,
 commodity and index pages and updates in real time using Yahoo Finance's free
 chart data.
 
+**Firefox Add-ons page:** https://addons.mozilla.org/en-US/firefox/addon/80411f2a404440c0805a/
+
 ## Supported sites
 TradingView, Yahoo Finance, Google Finance, MarketWatch, Investing.com, Finviz,
 Nasdaq, CNBC, Robinhood, Webull, Trading 212 and about 20 more (see `manifest.json`).

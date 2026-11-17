@@ -2,7 +2,7 @@
   if (window.top !== window || window.__stpLoaded) return;
   window.__stpLoaded = true;
 
-  const GREEN = "#4ce05a", RED = "#e5484d";
+  const GREEN = "rgba(76,224,90,.72)", RED = "rgba(229,72,77,.72)";
   const INTERVALS = ["1m", "5m", "15m", "1h", "1d"];
   const SUFFIX = { LSE: ".L", TSX: ".TO", TSXV: ".V", XETR: ".DE", FWB: ".F", ASX: ".AX", NSE: ".NS", BSE: ".BO",
     HKEX: ".HK", HKG: ".HK", TSE: ".T", TYO: ".T", SIX: ".SW", SWX: ".SW", MIL: ".MI", BME: ".MC", KRX: ".KS",
@@ -135,11 +135,19 @@
   const shadow = host.attachShadow({ mode: "closed" });
   shadow.innerHTML = `
     <style>
-      .p{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:2px;width:276px;box-sizing:border-box;
-         background:#1b2742;font:15px/1 Arial,Helvetica,sans-serif;color:#fff;cursor:move;user-select:none;
-         box-shadow:0 4px 18px rgba(0,0,0,.55)}
-      .c{background:#070d1f;height:29px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
-      .f{grid-column:1/3;gap:6px}
+      .p{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:1px;padding:5px;width:282px;box-sizing:border-box;
+         border-radius:14px;overflow:hidden;font:15px/1 Arial,Helvetica,sans-serif;color:#fff;cursor:move;user-select:none;
+         background:linear-gradient(145deg,rgba(40,60,110,.30),rgba(6,11,28,.40) 55%,rgba(10,18,44,.36));
+         backdrop-filter:blur(10px) saturate(170%);
+         border:1px solid rgba(255,255,255,.22);
+         box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.35),inset 0 -1px 0 rgba(255,255,255,.06)}
+      .p::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+         background:radial-gradient(120% 60% at 15% -10%,rgba(255,255,255,.22),transparent 55%),
+                    radial-gradient(90% 50% at 110% 110%,rgba(120,160,255,.14),transparent 60%)}
+      .c{position:relative;background:rgba(5,10,26,.30);height:29px;display:flex;align-items:center;justify-content:center;
+         white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.45);transition:background .25s}
+      .c:nth-child(1){border-top-left-radius:9px}.c:nth-child(2){border-top-right-radius:9px}
+      .f{grid-column:1/3;gap:6px;border-radius:0 0 9px 9px}
       .f span{cursor:pointer}.f span:hover{text-decoration:underline}
     </style>
     <div class="p">
