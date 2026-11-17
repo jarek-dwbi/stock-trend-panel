@@ -33,7 +33,10 @@ async function searchSymbol(q, strict) {
   if (!hit) return null;
   if (strict) { // the result's name must actually contain what was clicked
     const w = q.toLowerCase().split(/\s+/)[0], name = ((hit.shortname || "") + " " + (hit.longname || "")).toLowerCase();
-    if (w.length < 3 || !name.includes(w)) return null;
+    // Brand names often differ from the legal name ("SpaceX" = Space Exploration Technologies, SPCX):
+    // also accept a top stock result whose ticker starts like the name.
+    const brandMatch = hit.quoteType === "EQUITY" && hit.symbol.slice(0, 2).toLowerCase() === w.replace(/[^a-z]/g, "").slice(0, 2);
+    if (w.length < 3 || !(name.includes(w) || name.replace(/[^a-z]/g, "").includes(w.replace(/[^a-z]/g, "")) || brandMatch)) return null;
   }
   return hit.symbol;
 }

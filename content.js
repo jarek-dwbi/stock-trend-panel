@@ -127,8 +127,13 @@
   }
   // Company name -> ticker lookups (cached; Yahoo search in the background script).
   const nameCache = new Map();
+  // Well-known brand names whose ticker can't be found from the company's legal name.
+  const BRAND = { spacex: "SPCX", google: "GOOGL", alphabet: "GOOGL", facebook: "META", "meta platforms": "META",
+    "berkshire hathaway": "BRK-B", amazon: "AMZN", "amazon.com": "AMZN", netflix: "NFLX", nvidia: "NVDA", tesla: "TSLA",
+    apple: "AAPL", microsoft: "MSFT", "advanced micro devices": "AMD", amd: "AMD", palantir: "PLTR", "take-two interactive software": "TTWO" };
   function lookupName(name, strict) {
-    const key = name.toLowerCase();
+    const key = name.toLowerCase().replace(/,?\s+(inc|corp|corporation|plc|ltd|co|company|holdings|group)\.?$/i, "").trim();
+    if (BRAND[key]) return Promise.resolve(BRAND[key]);
     if (nameCache.has(key)) return Promise.resolve(nameCache.get(key));
     return browser.runtime.sendMessage({ type: "search", q: name, strict }).then((s) => { nameCache.set(key, s || null); return s; }).catch(() => null);
   }
@@ -198,7 +203,7 @@
   const $ = (id) => shadow.getElementById(id);
   (document.body || document.documentElement).appendChild(host);
 
-  let symbol = null, manual = false, interval = "5m", everOk = false, lastAuto, timer = null, busy = false;
+  let pending = false, symbol = null, manual = false, interval = "5m", everOk = false, lastAuto, timer = null, busy = false;
 
   function set(id, text, color) { const el = $(id); el.textContent = text; el.style.background = color || ""; }
   function render(a) {
@@ -214,8 +219,9 @@
   function blank() { ["trend", "strength", "momentum", "volatility", "volume", "closeEma", "consolidation", "ml"].forEach((id) => set(id, "…")); }
 
   async function refresh() {
-    if (!symbol || busy || document.hidden) return;
-    busy = true;
+    if (!symbol || document.hidden) return;
+    if (busy) { pending = true; return; } // instrument changed mid-load: run again when done
+    busy = true; pending = false;
     const want = symbol + interval;
     try {
       const res = await browser.runtime.sendMessage({ type: "bars", symbol, interval });
@@ -229,7 +235,7 @@
       } else if (!everOk) {
         $("sym").textContent = symbol + " (no data)";
       }
-    } catch (e) { /* keep last values */ } finally { busy = false; }
+    } catch (e) { /* keep last values */ } finally { busy = false; if (pending) { pending = false; refresh(); } }
   }
 
   function start(sym, isManual) {
