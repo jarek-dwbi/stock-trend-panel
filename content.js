@@ -117,7 +117,41 @@
   }
   const hasRule = RULES.some(([re]) => re.test(location.hostname));
   const STOP = new Set("BUY SELL USD EUR GBP CFD ISA ETF NEW ALL TOP FAQ HELP OK PRO MAX MIN AVG NAV PE EPS AM PM YTD LIVE DEMO OPEN HIGH LOW VOL CAP P L PIE PIES HOME MENU CLOSE EDIT ADD".split(" "));
-  let sniffHint = null, clickHint = null, titleHint = null, lastTitle = null, lastSaved = null, ready = false;
+  let lastTitle = null, lastSaved = null, ready = false, lastClick = 0, clickSeq = 0, tabSig = null;
+  // The newest signal wins: a click, the open tab changing, a chart request, or the title.
+  let hint = { sym: null, src: "", t: 0 };
+  function setHint(sym, src) {
+    if (!sym) return;
+    hint = { sym, src, t: Date.now() };
+    tick();
+  }
+  // Company name -> ticker lookups (cached; Yahoo search in the background script).
+  const nameCache = new Map();
+  function lookupName(name, strict) {
+    const key = name.toLowerCase();
+    if (nameCache.has(key)) return Promise.resolve(nameCache.get(key));
+    return browser.runtime.sendMessage({ type: "search", q: name, strict }).then((s) => { nameCache.set(key, s || null); return s; }).catch(() => null);
+  }
+  // Text on screen (a tab, a row, a header) -> ticker, or a name to look up.
+  function parseLabel(text) {
+    for (const part of String(text).split(/[\n·|•()×✕✖✓★☆▲▼↑↓→←]/)) {
+      const w = part.replace(/^[^A-Za-z0-9#^]+|[^A-Za-z0-9.%$€£]+$/g, "").trim();
+      if (!w || UI_WORD.test(w)) continue;
+      const loose = resolveLoose(w);
+      if (loose) return { sym: loose };
+      if (/^[A-Z]{1,5}(\.[A-Z])?$/.test(w) && !STOP.has(w)) return { sym: toYahoo(w) };
+      const nm = w.replace(/\s*[+\-−]?[\d$€£][\d.,%\s$€£+\-−]*$/, ""); // drop a trailing price / % change
+      if (/^[A-Za-z][A-Za-z0-9 .,&'\-]{2,45}$/.test(nm) && /[A-Za-z]{3}/.test(nm) && !/\d{2}/.test(nm)) return { name: nm };
+    }
+    return null;
+  }
+  function resolveLabel(text, src, seq) {
+    const p = parseLabel(text);
+    if (!p) return false;
+    if (p.sym) { setHint(p.sym, src); return true; }
+    lookupName(p.name, true).then((s) => { if (s && (seq === undefined || seq === clickSeq)) setHint(s, src); });
+    return true;
+  }
 
   function detect() {
     const u = new URL(location.href);
@@ -213,49 +247,73 @@
   // Re-detect every second: URL / title first, then hints from the app's network
   // requests, the last instrument clicked, or the page title looked up by name.
   // A manually typed ticker stays until the automatically detected one changes.
-  const UI_WORD = /^(buy|sell|deposit|withdraw|search|settings|menu|history|orders?|positions?|portfolio|home|invest|cancel|confirm|close|help|log ?out|log ?in|watchlists?|market|limit|stop|value|quantity|price|charts?|details|news|about|more|free funds|account|pies?|discover|community|today|all|popular|new|edit|add|remove|practice|real|loading)\b/i;
+  const UI_WORD = /^(stocks?|indices|forex|commodities|crypto|etfs?|most traded|top movers|new on|trending|gainers|losers|feed|see all|follow|indicators|buy|sell|deposit|withdraw|search|settings|menu|history|orders?|positions?|portfolio|home|invest|cancel|confirm|close|help|log ?out|log ?in|watchlists?|market|limit|stop|value|quantity|price|charts?|details|news|about|more|free funds|account|pies?|discover|community|today|all|popular|new|edit|add|remove|practice|real|loading)\b/i;
   function tick() {
     if (!ready) return;
     if (!hasRule && document.title !== lastTitle) {
       lastTitle = document.title;
       const name = lastTitle.replace(/trading\s*212/ig, "").replace(/[|\-–—:•·]+/g, " ").replace(/\s+/g, " ").trim();
-      titleHint = resolveLoose(name);
-      if (!titleHint && name.length >= 3 && !UI_WORD.test(name) && !/^stocks isa/i.test(name))
-        browser.runtime.sendMessage({ type: "search", q: name }).then((s) => { if (document.title === lastTitle && s) { titleHint = s; tick(); } }).catch(() => {});
+        const loose = resolveLoose(name);
+      if (loose) setHint(loose, "title");
+      else if (name.length >= 3 && !UI_WORD.test(name) && !/^stocks isa/i.test(name)) {
+        const t0 = lastTitle;
+        lookupName(name, false).then((s) => { if (document.title === t0 && s) setHint(s, "title"); });
+      }
     }
+    if (!hasRule) watchActiveTab();
     // Nothing detected on this page -> keep showing the last instrument you looked at.
-    const a = detect() || sniffHint || clickHint || titleHint || lastSaved || null;
+    const a = detect() || hint.sym || lastSaved || null;
     if (a !== lastAuto) { lastAuto = a; start(a, false); }
   }
+
+  // Apps like Trading 212 mark the open instrument tab as selected/active: follow it.
+  const ACTIVE_SEL = '[aria-selected="true"],[aria-current="page"],[aria-current="true"],[aria-pressed="true"],[class*="active" i],[class*="selected" i],[class*="current" i]';
+  function watchActiveTab() {
+    const found = [];
+    for (const el of document.querySelectorAll(ACTIVE_SEL)) {
+      if (found.length > 12 || el === host) continue;
+      const t = (el.innerText || "").trim();
+      if (t.length < 2 || t.length > 60 || t.split("\n").length > 3) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || r.top > innerHeight * 0.5) continue;
+      const p = parseLabel(t);
+      if (p) found.push(p.sym || p.name);
+    }
+    const sig = found.join("|");
+    if (sig === tabSig) return;
+    const prev = tabSig ? new Set(tabSig.split("|")) : new Set();
+    tabSig = sig;
+    const changed = found.filter((x) => !prev.has(x));
+    if (!changed.length || (prev.size === 0 && hint.sym)) return;
+    const symLike = (x) => /[=^]|^[A-Z.\-]{1,8}$/.test(x);
+    const pick = changed.find(symLike) || changed[0];
+    if (symLike(pick)) setHint(pick, "tab");
+    else lookupName(pick, true).then((s) => { if (s && tabSig === sig) setHint(s, "tab"); });
+  }
+
   setInterval(tick, 500);
   const soon = () => { setTimeout(tick, 60); setTimeout(tick, 400); setTimeout(tick, 1200); };
   window.addEventListener("popstate", soon); window.addEventListener("hashchange", soon);
 
-  browser.runtime.sendMessage({ type: "hint?" }).then((code) => { if (code && !sniffHint) { sniffHint = t212ToYahoo(code); tick(); } }).catch(() => {});
+  browser.runtime.sendMessage({ type: "hint?" }).then((code) => { if (code && !hint.sym) setHint(t212ToYahoo(code), "net"); }).catch(() => {});
 
   // Every click may be a navigation: re-detect right away. On apps without the ticker
   // in the URL, also read the instrument from the row that was clicked.
-  document.addEventListener("click", (e) => {
+  function onPress(e) {
     soon();
-    if (hasRule || e.target === host) return;
-    let el = e.target, nameCand = null;
-    for (let i = 0; i < 4 && el && el.innerText !== undefined; i++, el = el.parentElement) {
+    if (hasRule || e.composedPath().includes(host)) return;
+    lastClick = Date.now();
+    const seq = ++clickSeq;
+    let el = e.target;
+    for (let i = 0; i < 5 && el && el.innerText !== undefined; i++, el = el.parentElement) {
       const t = (el.innerText || "").trim();
-      if (t.length > 120) break;
-      for (const part of t.split(/[\n·|•()]/)) {
-        const w = part.trim();
-        if (!w || UI_WORD.test(w)) continue;
-        const loose = resolveLoose(w);
-        if (loose) { clickHint = loose; return; }
-        if (/^[A-Z]{1,5}(\.[A-Z])?$/.test(w) && !STOP.has(w)) { clickHint = toYahoo(w); return; }
-        const nm = w.replace(/\s*[+\-−]?[\d$€£][\d.,%\s$€£+\-−]*$/, ""); // drop a trailing price / % change
-        if (!nameCand && /^[A-Za-z][A-Za-z0-9 .&'\-]{2,39}$/.test(nm)) nameCand = nm;
-      }
+      if (t.length > 160) break;
+      if (t && resolveLabel(t, "click", seq)) return;
     }
-    // Only a company name on the row: look the ticker up by name (when network detection isn't working).
-    if (nameCand && !sniffHint)
-      browser.runtime.sendMessage({ type: "search", q: nameCand, strict: true }).then((s) => { if (s) { clickHint = s; tick(); } }).catch(() => {});
-  }, true);
+  }
+  // Capture phase on window, so the app can't swallow the event first.
+  window.addEventListener("pointerdown", onPress, true);
+  window.addEventListener("keyup", (e) => { if (e.key === "Enter") soon(); }, true);
 
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 
@@ -267,7 +325,8 @@
     if (!e.shiftKey) return ask();
     // Shift+click: copy detection diagnostics (no account data) for troubleshooting.
     const log = await browser.runtime.sendMessage({ type: "log?" }).catch(() => []);
-    const info = { host: location.hostname, path: location.pathname, title: document.title, symbol, sniffHint, clickHint, titleHint, requests: log };
+    const tabs = [...document.querySelectorAll(ACTIVE_SEL)].slice(0, 25).map((el) => ({ tag: el.tagName, cls: String(el.className).slice(0, 80), text: (el.innerText || "").trim().slice(0, 60) }));
+    const info = { host: location.hostname, path: location.pathname, title: document.title, symbol, hint, tabSig, active: tabs, requests: log };
     navigator.clipboard.writeText(JSON.stringify(info, null, 1)).then(() => { $("sym").textContent = "copied"; setTimeout(() => { $("sym").textContent = symbol || "?"; }, 1200); });
   });
   $("tf").addEventListener("click", () => {
@@ -277,7 +336,9 @@
   });
   browser.runtime.onMessage.addListener((m) => {
     if (m && m.type === "prompt") ask();
-    if (m && m.type === "sniff") { const s = t212ToYahoo(m.code); if (s) { sniffHint = s; clickHint = null; tick(); } }
+    // Instrument code seen in the app's own data requests. Trust chart requests, and any
+    // single-instrument request made right after a click.
+    if (m && m.type === "sniff" && (m.chart || Date.now() - lastClick < 4000)) setHint(t212ToYahoo(m.code), "net");
   });
 
   // Drag to move; position is remembered.

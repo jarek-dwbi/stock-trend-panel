@@ -59,11 +59,9 @@ browser.webRequest.onBeforeRequest.addListener((d) => {
   if (!codes.size) return;
   sniffLog.push({ path, codes: [...codes].slice(0, 6) }); if (sniffLog.length > 25) sniffLog.shift();
   if (codes.size !== 1) return;
-  const prev = tabHints.get(d.tabId);
-  if (!chart && prev && prev.chart) return; // chart requests are the most trustworthy
   const code = [...codes][0];
   tabHints.set(d.tabId, { code, chart });
-  browser.tabs.sendMessage(d.tabId, { type: "sniff", code }).catch(() => {});
+  browser.tabs.sendMessage(d.tabId, { type: "sniff", code, chart }).catch(() => {});
 }, { urls: ["*://*.trading212.com/*"] }, ["requestBody"]);
 browser.tabs.onRemoved.addListener((id) => tabHints.delete(id));
 
