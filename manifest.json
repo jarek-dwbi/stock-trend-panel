@@ -1,0 +1,83 @@
+{
+  "manifest_version": 2,
+  "name": "Stock Trend Panel",
+  "version": "1.2.0",
+  "description": "Live trend, momentum, volatility and volume panel that appears automatically on stock websites.",
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "stock-trend-panel@local",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  },
+  "permissions": [
+    "storage",
+    "webRequest",
+    "clipboardWrite",
+    "*://*.trading212.com/*",
+    "https://query1.finance.yahoo.com/*",
+    "https://query2.finance.yahoo.com/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "browser_action": {
+    "default_icon": "icon.svg",
+    "default_title": "Stock Trend Panel: set ticker / show panel"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.tradingview.com/*",
+        "*://finance.yahoo.com/*",
+        "*://*.finance.yahoo.com/*",
+        "*://www.google.com/finance/*",
+        "*://*.marketwatch.com/*",
+        "*://*.investing.com/*",
+        "*://*.finviz.com/*",
+        "*://*.stockanalysis.com/*",
+        "*://*.seekingalpha.com/*",
+        "*://*.cnbc.com/*",
+        "*://*.robinhood.com/*",
+        "*://*.webull.com/*",
+        "*://*.nasdaq.com/*",
+        "*://*.barchart.com/*",
+        "*://*.bloomberg.com/*",
+        "*://*.tipranks.com/*",
+        "*://*.stocktwits.com/*",
+        "*://*.morningstar.com/*",
+        "*://*.fool.com/*",
+        "*://*.zacks.com/*",
+        "*://*.marketbeat.com/*",
+        "*://*.wsj.com/*",
+        "*://*.benzinga.com/*",
+        "*://*.etoro.com/*",
+        "*://*.trading212.com/*",
+        "*://*.interactivebrokers.com/*",
+        "*://*.stockcharts.com/*",
+        "*://*.macrotrends.net/*",
+        "*://*.nyse.com/*",
+        "*://*.londonstockexchange.com/*",
+        "*://*.coinmarketcap.com/*"
+      ],
+      "js": [
+        "indicators.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
